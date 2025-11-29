@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | Om Rajguru</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .item-list {
+            margin-top: 20px;
+        }
+
+        .item {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .status-published {
+            color: green;
+        }
+
+        .status-draft {
+            color: orange;
+        }
+
+        #upload-progress {
+            display: none;
+            margin-top: 10px;
+            font-weight: bold;
+            color: blue;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Admin Dashboard</h1>
+
+    <div id="login-section">
+        <h2>Login</h2>
+        <input type="text" id="username" placeholder="Username"><br><br>
+        <input type="password" id="password" placeholder="Password"><br><br>
+        <button onclick="handleLogin()">Login</button>
+        <p id="login-error" style="color: red;"></p>
+    </div>
+
+    <div id="dashboard-section" style="display: none;">
+        <p>Welcome, Om.</p>
+        <button onclick="handleLogout()">Logout</button>
+        <hr>
+
+        <!-- Projects Section -->
+        <h2>Manage Projects</h2>
+        <input type="hidden" id="proj-id">
+        <input type="text" id="proj-title" placeholder="Project Title"><br><br>
+        <textarea id="proj-desc" placeholder="Description"></textarea><br><br>
+        <input type="text" id="proj-link" placeholder="Project Link (Optional)"><br><br>
+        <select id="proj-status-select">
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+        </select><br><br>
+        <button onclick="saveProject()">Save Project</button>
+        <button onclick="clearProjectForm()">Clear Form</button>
+        <p id="proj-status"></p>
+
+        <div id="projects-list" class="item-list"></div>
+
+        <hr>
+
+        <!-- Skills Section -->
+        <h2>Manage Skills / Courses</h2>
+        <input type="hidden" id="skill-id">
+        <input type="text" id="skill-title" placeholder="Skill/Course Title"><br><br>
+        <input type="text" id="skill-provider" placeholder="Provider (e.g. Coursera)"><br><br>
+        <textarea id="skill-desc" placeholder="Course/Skill Description"></textarea><br><br>
+        <input type="date" id="skill-date"><br><br>
+        <select id="skill-status-select">
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+        </select><br><br>
+        <label>Certificate PDF (Leave empty to keep existing):</label>
+        <input type="file" id="skill-file" accept="application/pdf"><br>
+        <div id="upload-progress"></div><br>
+        <button onclick="saveSkill()">Save Skill</button>
+        <button onclick="clearSkillForm()">Clear Form</button>
+        <p id="skill-status"></p>
+
+        <div id="skills-list" class="item-list"></div>
+
+        <hr>
+
+        <!-- Blog Section -->
+        <h2>Manage Blogs</h2>
+        <input type="hidden" id="blog-id">
+        <input type="text" id="blog-title" placeholder="Blog Title"><br><br>
+        <select id="blog-category">
+            <option value="">Select Category</option>
+            <option value="process">Process & Deconstruction</option>
+            <option value="mistakes">Mistakes & Maturity</option>
+            <option value="edge">Unconventional Edge</option>
+            <option value="expertise">Applied Expertise</option>
+            <option value="market">Market Commentary</option>
+            <option value="values">Philosophy & Values</option>
+        </select><br><br>
+        <textarea id="blog-content" placeholder="Write your blog here..."
+            style="width: 100%; height: 200px;"></textarea><br><br>
+        <select id="blog-status-select">
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+        </select><br><br>
+        <button onclick="saveBlog()">Save Blog</button>
+        <button onclick="clearBlogForm()">Clear Form</button>
+        <p id="blog-status"></p>
+
+        <div id="blogs-list" class="item-list"></div>
+
+        <hr>
+
+        <!-- Logs Section -->
+        <h2>Admin Logs</h2>
+        <button onclick="fetchLogs()">Refresh Logs</button>
+        <div id="logs-list" class="item-list"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://waebduhpolnbxebyoiqy.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhZWJkdWhwb2xuYnhlYnlvaXF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MTMxNDQsImV4cCI6MjA3OTk4OTE0NH0.y0f3jlXHt49jzHwW6IivuF6K_ayJmm3BBZ03THCqgNw';
+
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // --- Auth & Logging ---
+
+        async function handleLogin() {
+            const email = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+            const errorEl = document.getElementById('login-error');
+
+            errorEl.innerText = 'Logging in...';
+
+            const { data, error } = await sb.auth.signInWithPassword({
+                email: email,
+                password: pass
+            });
+
+            if (error) {
+                errorEl.innerText = 'Error: ' + error.message;
+            } else {
+                document.getElementById('login-section').style.display = 'none';
+                document.getElementById('dashboard-section').style.display = 'block';
+
+                await sb.from('admin_logs').insert([{
+                    username: email,
+                    user_agent: navigator.userAgent
+                }]);
+
+                loadAllData();
+            }
+        }
+
+        async function handleLogout() {
+            await sb.auth.signOut();
+            location.reload();
+        }
+
+        async function checkSession() {
+            const { data: { session } } = await sb.auth.getSession();
+            if (session) {
+                document.getElementById('login-section').style.display = 'none';
+                document.getElementById('dashboard-section').style.display = 'block';
+                loadAllData();
+            }
+        }
+        checkSession();
+
+        function loadAllData() {
+            fetchProjects();
+            fetchSkills();
+            fetchBlogs();
+            fetchLogs();
+        }
+
+        // --- Projects Management ---
+
+        async function fetchProjects() {
+            const { data, error } = await sb.from('projects').select('*').order('created_at', { ascending: false });
+            if (error) return console.error(error);
+
+            const container = document.getElementById('projects-list');
+            container.innerHTML = '';
+            data.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'item';
+                div.innerHTML = `
+                    <strong>${p.title}</strong> <span class="status-${p.status}">(${p.status})</span><br>
+                    ${p.description.substring(0, 50)}...<br>
+                    <button onclick="editProject(${p.id})">Edit</button>
+                    <button onclick="deleteProject(${p.id})">Delete</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function saveProject() {
+            const id = document.getElementById('proj-id').value;
+            const title = document.getElementById('proj-title').value;
+            const description = document.getElementById('proj-desc').value;
+            const link = document.getElementById('proj-link').value;
+            const statusVal = document.getElementById('proj-status-select').value;
+            const statusEl = document.getElementById('proj-status');
+
+            if (!title) return statusEl.innerText = 'Title required';
+            statusEl.innerText = 'Saving...';
+
+            const payload = { title, description, link, status: statusVal };
+            let error;
+
+            if (id) {
+                const res = await sb.from('projects').update(payload).eq('id', id);
+                error = res.error;
+            } else {
+                const res = await sb.from('projects').insert([payload]);
+                error = res.error;
+            }
+
+            if (error) {
+                statusEl.innerText = 'Error: ' + error.message;
+            } else {
+                statusEl.innerText = 'Saved!';
+                clearProjectForm();
+                fetchProjects();
+            }
+        }
+
+        async function editProject(id) {
+            const { data } = await sb.from('projects').select('*').eq('id', id).single();
+            if (data) {
+                document.getElementById('proj-id').value = data.id;
+                document.getElementById('proj-title').value = data.title;
+                document.getElementById('proj-desc').value = data.description;
+                document.getElementById('proj-link').value = data.link;
+                document.getElementById('proj-status-select').value = data.status || 'published';
+                window.scrollTo(0, 0);
+            }
+        }
+
+        async function deleteProject(id) {
+            if (!confirm('Are you sure?')) return;
+            await sb.from('projects').delete().eq('id', id);
+            fetchProjects();
+        }
+
+        function clearProjectForm() {
+            document.getElementById('proj-id').value = '';
+            document.getElementById('proj-title').value = '';
+            document.getElementById('proj-desc').value = '';
+            document.getElementById('proj-link').value = '';
+            document.getElementById('proj-status-select').value = 'published';
+            document.getElementById('proj-status').innerText = '';
+        }
+
+        // --- Skills Management ---
+
+        async function fetchSkills() {
+            const { data, error } = await sb.from('skills').select('*').order('date', { ascending: false });
+            if (error) return console.error(error);
+
+            const container = document.getElementById('skills-list');
+            container.innerHTML = '';
+            data.forEach(s => {
+                const div = document.createElement('div');
+                div.className = 'item';
+                div.innerHTML = `
+                    <strong>${s.title}</strong> <span class="status-${s.status}">(${s.status})</span><br>
+                    ${s.provider} - ${s.date}<br>
+                    <button onclick="editSkill(${s.id})">Edit</button>
+                    <button onclick="deleteSkill(${s.id})">Delete</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function saveSkill() {
+            const id = document.getElementById('skill-id').value;
+            const title = document.getElementById('skill-title').value;
+            const provider = document.getElementById('skill-provider').value;
+            const description = document.getElementById('skill-desc').value;
+            const date = document.getElementById('skill-date').value;
+            const statusVal = document.getElementById('skill-status-select').value;
+            const fileInput = document.getElementById('skill-file');
+            const statusEl = document.getElementById('skill-status');
+            const progressEl = document.getElementById('upload-progress');
+
+            if (!title || !date) return statusEl.innerText = 'Title and Date required';
+            statusEl.innerText = 'Processing...';
+
+            let certUrl = null;
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const fileName = `${Date.now()}_${file.name}`;
+
+                try {
+                    certUrl = await uploadFileWithProgress(file, fileName, progressEl);
+                } catch (e) {
+                    return statusEl.innerText = 'Upload Failed: ' + e.message;
+                }
+            }
+
+            const payload = { title, provider, description, date, status: statusVal };
+            if (certUrl) payload.certificate_url = certUrl;
+
+            let error;
+            if (id) {
+                const res = await sb.from('skills').update(payload).eq('id', id);
+                error = res.error;
+            } else {
+                const res = await sb.from('skills').insert([payload]);
+                error = res.error;
+            }
+
+            if (error) {
+                statusEl.innerText = 'Error: ' + error.message;
+            } else {
+                statusEl.innerText = 'Saved!';
+                clearSkillForm();
+                fetchSkills();
+            }
+        }
+
+        function uploadFileWithProgress(file, fileName, progressEl) {
+            return new Promise(async (resolve, reject) => {
+                const { data: { session } } = await sb.auth.getSession();
+                if (!session) return reject(new Error("Not authenticated"));
+
+                const xhr = new XMLHttpRequest();
+                const url = `${SUPABASE_URL}/storage/v1/object/certificates/${fileName}`;
+
+                xhr.open('POST', url, true);
+                xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+                xhr.setRequestHeader('Content-Type', file.type);
+
+                progressEl.style.display = 'block';
+
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const uploadedMB = (e.loaded / (1024 * 1024)).toFixed(2);
+                        const totalMB = (e.total / (1024 * 1024)).toFixed(2);
+                        progressEl.innerText = `Uploading: ${uploadedMB} MB / ${totalMB} MB`;
+                    }
+                };
+
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        progressEl.style.display = 'none';
+                        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/certificates/${fileName}`;
+                        resolve(publicUrl);
+                    } else {
+                        reject(new Error(xhr.statusText));
+                    }
+                };
+
+                xhr.onerror = () => reject(new Error('Network Error'));
+                xhr.send(file);
+            });
+        }
+
+        async function editSkill(id) {
+            const { data } = await sb.from('skills').select('*').eq('id', id).single();
+            if (data) {
+                document.getElementById('skill-id').value = data.id;
+                document.getElementById('skill-title').value = data.title;
+                document.getElementById('skill-provider').value = data.provider;
+                document.getElementById('skill-desc').value = data.description || '';
+                document.getElementById('skill-date').value = data.date;
+                document.getElementById('skill-status-select').value = data.status || 'published';
+                window.scrollTo(0, 0);
+            }
+        }
+
+        async function deleteSkill(id) {
+            if (!confirm('Are you sure?')) return;
+            await sb.from('skills').delete().eq('id', id);
+            fetchSkills();
+        }
+
+        function clearSkillForm() {
+            document.getElementById('skill-id').value = '';
+            document.getElementById('skill-title').value = '';
+            document.getElementById('skill-provider').value = '';
+            document.getElementById('skill-desc').value = '';
+            document.getElementById('skill-date').value = '';
+            document.getElementById('skill-file').value = '';
+            document.getElementById('skill-status-select').value = 'published';
+            document.getElementById('skill-status').innerText = '';
+            document.getElementById('upload-progress').style.display = 'none';
+        }
+
+        // --- Blogs Management ---
+
+        async function fetchBlogs() {
+            const { data, error } = await sb.from('posts').select('*').order('created_at', { ascending: false });
+            if (error) return console.error(error);
+
+            const container = document.getElementById('blogs-list');
+            container.innerHTML = '';
+            data.forEach(b => {
+                const div = document.createElement('div');
+                div.className = 'item';
+                div.innerHTML = `
+                    <strong>${b.title}</strong> <span class="status-${b.status}">(${b.status})</span><br>
+                    Category: ${b.category || 'None'}<br>
+                    Likes: ${b.likes}<br>
+                    <button onclick="editBlog(${b.id})">Edit</button>
+                    <button onclick="deleteBlog(${b.id})">Delete</button>
+                    <a href="post.html?slug=${b.slug || ''}&id=${b.id}" target="_blank">View</a>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function saveBlog() {
+            const id = document.getElementById('blog-id').value;
+            const title = document.getElementById('blog-title').value;
+            const content = document.getElementById('blog-content').value;
+            const category = document.getElementById('blog-category').value;
+            const statusVal = document.getElementById('blog-status-select').value;
+            const statusEl = document.getElementById('blog-status');
+
+            if (!title || !content) return statusEl.innerText = 'Title and Content required';
+            statusEl.innerText = 'Saving...';
+
+            const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+            const payload = { title, content, category, status: statusVal, slug };
+            let error;
+
+            if (id) {
+                const res = await sb.from('posts').update(payload).eq('id', id);
+                error = res.error;
+            } else {
+                const res = await sb.from('posts').insert([payload]);
+                error = res.error;
+            }
+
+            if (error) {
+                statusEl.innerText = 'Error: ' + error.message;
+            } else {
+                statusEl.innerText = 'Saved!';
+                clearBlogForm();
+                fetchBlogs();
+            }
+        }
+
+        async function editBlog(id) {
+            const { data } = await sb.from('posts').select('*').eq('id', id).single();
+            if (data) {
+                document.getElementById('blog-id').value = data.id;
+                document.getElementById('blog-title').value = data.title;
+                document.getElementById('blog-content').value = data.content;
+                document.getElementById('blog-category').value = data.category || '';
+                document.getElementById('blog-status-select').value = data.status || 'draft';
+                window.scrollTo(0, 0);
+            }
+        }
+
+        async function deleteBlog(id) {
+            if (!confirm('Are you sure?')) return;
+            await sb.from('posts').delete().eq('id', id);
+            fetchBlogs();
+        }
+
+        function clearBlogForm() {
+            document.getElementById('blog-id').value = '';
+            document.getElementById('blog-title').value = '';
+            document.getElementById('blog-content').value = '';
+            document.getElementById('blog-category').value = '';
+            document.getElementById('blog-status-select').value = 'draft';
+            document.getElementById('blog-status').innerText = '';
+        }
+
+        // --- Logs ---
+
+        async function fetchLogs() {
+            const { data, error } = await sb.from('admin_logs').select('*').order('login_time', { ascending: false }).limit(20);
+            if (error) return console.error(error);
+
+            const container = document.getElementById('logs-list');
+            container.innerHTML = '';
+            data.forEach(log => {
+                const div = document.createElement('div');
+                div.style.borderBottom = '1px solid #eee';
+                div.style.padding = '5px';
+                div.innerHTML = `<small>${new Date(log.login_time).toLocaleString()} - ${log.username}</small>`;
+                container.appendChild(div);
+            });
+        }
+
+        // --- Realtime ---
+        sb.channel('admin_all')
+            .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+                checkSession();
+            })
+            .subscribe();
+
+    </script>
+</body>
+
+</html>

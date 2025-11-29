@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog | Om Rajguru</title>
+    <meta name="description" content="Read the latest thoughts and insights from Om Rajguru.">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+    <h1>Blog</h1>
+    <p><a href="index.html">Back to Home</a></p>
+    <hr>
+
+    <div id="posts-list">
+        <p>Loading posts...</p>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://waebduhpolnbxebyoiqy.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhZWJkdWhwb2xuYnhlYnlvaXF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MTMxNDQsImV4cCI6MjA3OTk4OTE0NH0.y0f3jlXHt49jzHwW6IivuF6K_ayJmm3BBZ03THCqgNw';
+
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const postsList = document.getElementById('posts-list');
+
+        async function fetchPosts() {
+            const { data, error } = await sb
+                .from('posts')
+                .select('*')
+                .eq('status', 'published')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching posts:', error);
+                postsList.innerHTML = '<p>Error loading posts.</p>';
+                return;
+            }
+
+            renderPosts(data);
+        }
+
+        function renderPosts(posts) {
+            postsList.innerHTML = '';
+            if (posts.length === 0) {
+                postsList.innerHTML = '<p>No posts yet.</p>';
+                return;
+            }
+            const ul = document.createElement('ul');
+            posts.forEach(post => {
+                const li = document.createElement('li');
+                // Use clean URL
+                const link = post.slug ? `/blog/${post.slug}` : `post.html?id=${post.id}`;
+                li.innerHTML = `
+                    <a href="${link}"><strong>${post.title}</strong></a> 
+                    (${post.likes} likes)<br>
+                    <small>${new Date(post.created_at).toLocaleDateString()}</small>
+                `;
+                ul.appendChild(li);
+            });
+            postsList.appendChild(ul);
+        }
+
+        // Real-time subscription
+        sb.channel('public_posts')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+                fetchPosts();
+            })
+            .subscribe();
+
+        fetchPosts();
+    </script>
+</body>
+
+</html>

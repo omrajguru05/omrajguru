@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post | Om Rajguru</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+    <p><a href="blog.html">Back to Blog</a></p>
+    <!DOCTYPE html>
+    <html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Post | Om Rajguru</title>
+        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    </head>
+
+    <body>
+        <p><a href="blog.html">Back to Blog</a></p>
+        <hr>
+
+        <div id="post-content">
+            <p>Loading...</p>
+        </div>
+
+        <script>
+            const SUPABASE_URL = 'https://waebduhpolnbxebyoiqy.supabase.co';
+            const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhZWJkdWhwb2xuYnhlYnlvaXF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MTMxNDQsImV4cCI6MjA3OTk4OTE0NH0.y0f3jlXHt49jzHwW6IivuF6K_ayJmm3BBZ03THCqgNw';
+
+            const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            const container = document.getElementById('post-content');
+
+            // Get ID or Slug from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const postId = urlParams.get('id');
+            const postSlug = urlParams.get('slug');
+
+            async function fetchPost() {
+                let query = sb.from('posts').select('*');
+
+                if (postSlug) {
+                    query = query.eq('slug', postSlug);
+                } else if (postId) {
+                    query = query.eq('id', postId);
+                } else {
+                    container.innerHTML = '<p>Post not found.</p>';
+                    return;
+                }
+
+                const { data, error } = await query.single();
+
+                if (error || !data) {
+                    container.innerHTML = '<p>Post not found.</p>';
+                    return;
+                }
+
+                // Update Page Title & Meta for SEO
+                document.title = `${data.title} | Om Rajguru`;
+
+                // Render
+                container.innerHTML = `
+                <h1>${data.title}</h1>
+                <small>${new Date(data.created_at).toLocaleDateString()}</small>
+                <hr>
+                <div style="white-space: pre-wrap; font-family: inherit;">${escapeHtml(data.content)}</div>
+                <hr>
+                <button onclick="likePost(${data.id}, ${data.likes})">Like (${data.likes})</button>
+            `;
+            }
+
+            async function likePost(id, currentLikes) {
+                const { error } = await sb
+                    .from('posts')
+                    .update({ likes: currentLikes + 1 })
+                    .eq('id', id);
+
+                if (error) console.error('Error liking:', error);
+            }
+
+            function escapeHtml(text) {
+                if (!text) return '';
+                return text
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            // Real-time subscription
+            if (postId || postSlug) {
+                sb.channel('public_post_view')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, payload => {
+                        // Simple refresh if the modified post matches ours
+                        if (payload.new && (payload.new.id == postId || payload.new.slug == postSlug)) {
+                            fetchPost();
+                        }
+                    })
+                    .subscribe();
+            }
+
+            fetchPost();
+        </script>
+    </body>
+
+    </html>

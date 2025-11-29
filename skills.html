@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skills & Courses | Om Rajguru</title>
+    <meta name="description" content="Explore Om Rajguru's completed courses, certifications, and technical skills.">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+    <h1>Skills & Courses</h1>
+    <p><a href="index.html">Back to Home</a></p>
+    <hr>
+
+    <div id="skills-list">
+        <p>Loading skills...</p>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://waebduhpolnbxebyoiqy.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhZWJkdWhwb2xuYnhlYnlvaXF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MTMxNDQsImV4cCI6MjA3OTk4OTE0NH0.y0f3jlXHt49jzHwW6IivuF6K_ayJmm3BBZ03THCqgNw';
+
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const skillsList = document.getElementById('skills-list');
+
+        async function fetchSkills() {
+            const { data, error } = await sb
+                .from('skills')
+                .select('*')
+                .eq('status', 'published')
+                .order('date', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching skills:', error);
+                skillsList.innerHTML = '<p>Error loading skills.</p>';
+                return;
+            }
+
+            renderSkills(data);
+        }
+
+        function renderSkills(skills) {
+            skillsList.innerHTML = '';
+            if (skills.length === 0) {
+                skillsList.innerHTML = '<p>No skills listed yet.</p>';
+                return;
+            }
+            const ul = document.createElement('ul');
+            skills.forEach(skill => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <strong>${skill.title}</strong> - ${skill.provider} (${skill.date})<br>
+                    ${skill.description ? `<em>${skill.description}</em><br>` : ''}
+                    ${skill.certificate_url ? `<a href="${skill.certificate_url}" target="_blank">View Certificate</a>` : ''}
+                `;
+                ul.appendChild(li);
+            });
+            skillsList.appendChild(ul);
+        }
+
+        // Real-time subscription
+        sb.channel('skills')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'skills' }, payload => {
+                console.log('Change received!', payload);
+                fetchSkills();
+            })
+            .subscribe();
+
+        fetchSkills();
+    </script>
+</body>
+
+</html>

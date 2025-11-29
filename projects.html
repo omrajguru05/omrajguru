@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projects | Om Rajguru</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+    <h1>Projects</h1>
+    <p><a href="index.html">Back to Home</a></p>
+    <hr>
+
+    <div id="projects-list">
+        <p>Loading projects...</p>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://waebduhpolnbxebyoiqy.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhZWJkdWhwb2xuYnhlYnlvaXF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MTMxNDQsImV4cCI6MjA3OTk4OTE0NH0.y0f3jlXHt49jzHwW6IivuF6K_ayJmm3BBZ03THCqgNw';
+
+        // Renamed to sb to avoid shadowing
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const projectsList = document.getElementById('projects-list');
+
+        async function fetchProjects() {
+            const { data, error } = await sb
+                .from('projects')
+                .select('*')
+                .eq('status', 'published')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching projects:', error);
+                projectsList.innerHTML = '<p>Error loading projects.</p>';
+                return;
+            }
+
+            renderProjects(data);
+        }
+
+        function renderProjects(projects) {
+            projectsList.innerHTML = '';
+            if (projects.length === 0) {
+                projectsList.innerHTML = '<p>No projects yet.</p>';
+                return;
+            }
+            const ul = document.createElement('ul');
+            projects.forEach(project => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <strong>${project.title}</strong><br>
+                    ${project.description}<br>
+                    ${project.link ? `<a href="${project.link}" target="_blank">View Project</a>` : ''}
+                `;
+                ul.appendChild(li);
+            });
+            projectsList.appendChild(ul);
+        }
+
+        // Real-time subscription
+        sb.channel('projects')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, payload => {
+                console.log('Change received!', payload);
+                fetchProjects();
+            })
+            .subscribe();
+
+        fetchProjects();
+    </script>
+</body>
+
+</html>
